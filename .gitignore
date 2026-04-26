@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.db
+backups/
+*.csv
+.env
+.streamlit/
+error_log.txt
+.DS_Store
