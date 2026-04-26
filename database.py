@@ -9,13 +9,18 @@ from datetime import datetime
 from pathlib import Path
 import csv
 import hashlib
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ============================================================
 # 配置
 # ============================================================
 
-DB_PATH = "experiments.db"
-DELETION_PASSWORD = "pulse2026"  # 刪除驗證碼
+DELETION_PASSWORD = os.getenv("DELETION_PASSWORD")
+DB_PATH = os.getenv("DATABASE_PATH", "experiments.db")
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
 
 # ============================================================
 # 初始化數據庫
