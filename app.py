@@ -10,6 +10,12 @@ from database import (
     delete_experiment, get_available_dates
 )
 
+from visualization import (
+    plot_wavelength_trend, plot_power_trend,
+    plot_material_distribution, plot_parameter_correlation,
+    create_statistics_summary
+)
+
 st.set_page_config(page_title="Pulse Lab AI Assistant", layout="wide")
 
 # ============================================================
@@ -417,78 +423,100 @@ elif page == "📊 查看與刪除":
 # ============================================================
 
 elif page == "📈 統計與導出":
-    st.subheader("實驗統計與智能導出")
+    st.subheader("實驗統計與數據分析")
     
     try:
-        # --- 統計信息 ---
         stats = get_experiment_stats()
+        experiments = get_all_experiments()
         
         if stats and stats.get('total_experiments', 0) > 0:
-            st.markdown("### 📊 數據總覽")
-            c1, c2, c3, c4 = st.columns(4)
             
-            with c1:
-                st.metric("總實驗筆數", stats.get('total_experiments', 0))
+            # 使用標籤頁組織內容
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📊 數據摘要",
+                "📈 趨勢分析",
+                "🎨 分布圖表",
+                "📥 數據導出"
+            ])
             
-            with c2:
-                st.metric("涵蓋材料種類", len(stats.get('by_material', {})))
+            with tab1:
+                st.markdown("### 📊 統計摘要")
+                summary_df = create_statistics_summary(stats)
+                st.dataframe(summary_df, use_container_width=True)
+                
+                # 按材料統計
+                if stats.get('by_material'):
+                    st.markdown("### 🧪 按材料分佈")
+                    for material, count in sorted(stats['by_material'].items(), 
+                                                 key=lambda x: x[1], reverse=True):
+                        st.write(f"- **{material}**: {count} 次")
             
-            with c3:
-                avg_wave = stats.get('wavelength', {}).get('avg')
-                if avg_wave:
-                    st.metric("平均波長", f"{avg_wave:.0f} nm")
+            with tab2:
+                st.markdown("### 📈 參數趨勢")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig_wavelength = plot_wavelength_trend(experiments)
+                    if fig_wavelength:
+                        st.pyplot(fig_wavelength)
+                    else:
+                        st.info("波長數據不足（需至少 2 筆）")
+                
+                with col2:
+                    fig_power = plot_power_trend(experiments)
+                    if fig_power:
+                        st.pyplot(fig_power)
+                    else:
+                        st.info("功率數據不足（需至少 2 筆）")
             
-            with c4:
-                min_wave = stats.get('wavelength', {}).get('min')
-                max_wave = stats.get('wavelength', {}).get('max')
-                if min_wave and max_wave:
-                    st.metric("波長範圍", f"{min_wave:.0f}-{max_wave:.0f} nm")
+            with tab3:
+                st.markdown("### 🎨 分布與相關性")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig_material = plot_material_distribution(stats)
+                    if fig_material:
+                        st.plotly_chart(fig_material, use_container_width=True)
+                
+                with col2:
+                    fig_correlation = plot_parameter_correlation(experiments)
+                    if fig_correlation:
+                        st.plotly_chart(fig_correlation, use_container_width=True)
+                    else:
+                        st.info("參數數據不足（需至少 3 筆有波長和功率的記錄）")
             
-            st.divider()
-            
-            # --- 按材料分佈 ---
-            if stats.get('by_material'):
-                st.markdown("### 🧪 按材料分佈")
-                materials_data = stats.get('by_material', {})
-                for material, count in sorted(materials_data.items(), key=lambda x: x[1], reverse=True):
-                    st.write(f"- **{material}**: {count} 次")
-            
-            st.divider()
-            
-            # --- 智能導出 ---
-            st.markdown("### 📥 智能導出 CSV (不覆蓋檔案)")
-            
-            dates = get_available_dates()
-            export_options = ["所有歷史記錄"] + dates
-            
-            col_exp1, col_exp2 = st.columns([3, 1])
-            
-            with col_exp1:
-                export_choice = st.selectbox(
-                    "選擇要導出的數據範圍",
-                    export_options,
-                    help="選擇後會自動生成帶時間戳的檔名"
-                )
-            
-            with col_exp2:
-                st.write("")
-                st.write("")
-                if st.button("🚀 執行導出", use_container_width=True):
-                    try:
-                        filter_val = None if export_choice == "所有歷史記錄" else export_choice
-                        success, filename = export_to_csv(date_filter=filter_val)
+            with tab4:
+                # 保留原有的導出功能
+                st.markdown("### 📥 智能導出 CSV")
+                
+                dates = get_available_dates()
+                export_options = ["所有歷史記錄"] + dates
+                
+                col_exp1, col_exp2 = st.columns([3, 1])
+                
+                with col_exp1:
+                    export_choice = st.selectbox(
+                        "選擇要導出的數據範圍",
+                        export_options
+                    )
+                
+                with col_exp2:
+                    st.write("")
+                    st.write("")
+                    if st.button("🚀 執行導出", use_container_width=True):
+                        try:
+                            filter_val = None if export_choice == "所有歷史記錄" else export_choice
+                            success, filename = export_to_csv(date_filter=filter_val)
+                            
+                            if success:
+                                st.success(f"✅ 導出成功！\n檔名：`{filename}`")
+                            else:
+                                st.error(f"❌ 導出失敗：{filename}")
                         
-                        if success:
-                            st.success(f"✅ 導出成功！\n檔名：`{filename}`")
-                            st.info(f"檔案已保存在專案目錄下")
-                        else:
-                            st.error(f"❌ 導出失敗：{filename}")
-                    
-                    except Exception as e:
-                        st.error(f"❌ 導出過程中出錯：{str(e)}")
-        
+                        except Exception as e:
+                            st.error(f"❌ 導出過程中出錯：{str(e)}")
         else:
-            st.info("還沒有足夠的數據進行分析和導出")
+            st.info("還沒有足夠的數據進行分析")
     
     except Exception as e:
         st.error(f"❌ 統計失敗：{str(e)}")
