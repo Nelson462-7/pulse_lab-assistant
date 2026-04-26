@@ -1,3 +1,4 @@
+$Host.UI.RawUI.WindowTitle = "Pulse Lab 實驗助手 - 運行中"
 # 自動進入目錄
 cd "C:\pulse_lab-assistant"
 # 啟動虛擬環境

@@ -3,10 +3,31 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 from datetime import datetime
+import warnings
 
-# 設置中文字體
-plt.rcParams['font.sans-serif'] = ['SimHei']  # Windows
-plt.rcParams['axes.unicode_minus'] = False
+# 抑制 matplotlib 字體警告
+warnings.filterwarnings('ignore', category=UserWarning)
+
+# ============================================================
+# 中文字體設置（Windows 相容）
+# ============================================================
+
+def setup_chinese_font():
+    """設置中文字體 - 自動偵測可用字體"""
+    try:
+        # Windows 優先使用
+        plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei', 'SimHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+    except:
+        # 如果沒有中文字體，使用備選方案
+        plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+
+setup_chinese_font()
+
+# ============================================================
+# 繪圖函數
+# ============================================================
 
 def plot_wavelength_trend(experiments):
     """波長趨勢圖"""
@@ -22,9 +43,9 @@ def plot_wavelength_trend(experiments):
     
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.plot(dates, wavelengths, marker='o', linestyle='-', linewidth=2, color='blue')
-    ax.set_xlabel('日期')
-    ax.set_ylabel('波長 (nm)')
-    ax.set_title('波長使用趨勢')
+    ax.set_xlabel('Date')  # 改用英文以避免字體問題
+    ax.set_ylabel('Wavelength (nm)')
+    ax.set_title('Wavelength Trend')
     ax.grid(True, alpha=0.3)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.xticks(rotation=45)
@@ -45,9 +66,9 @@ def plot_power_trend(experiments):
     
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.plot(dates, powers, marker='s', linestyle='-', linewidth=2, color='red')
-    ax.set_xlabel('日期')
-    ax.set_ylabel('功率 (mW)')
-    ax.set_title('功率使用趨勢')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Power (mW)')
+    ax.set_title('Power Trend')
     ax.grid(True, alpha=0.3)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     plt.xticks(rotation=45)
@@ -63,8 +84,8 @@ def plot_material_distribution(stats):
     fig = px.bar(
         x=materials,
         y=counts,
-        labels={'x': '材料', 'y': '實驗次數'},
-        title='各材料使用頻率',
+        labels={'x': 'Material', 'y': 'Count'},
+        title='Material Distribution',
         color=materials,
         color_discrete_sequence=px.colors.qualitative.Set2
     )
@@ -92,8 +113,8 @@ def plot_parameter_correlation(experiments):
         x='wavelength',
         y='power',
         color='material',
-        title='波長 vs 功率（按材料著色）',
-        labels={'wavelength': '波長 (nm)', 'power': '功率 (mW)'},
+        title='Wavelength vs Power',
+        labels={'wavelength': 'Wavelength (nm)', 'power': 'Power (mW)'},
         hover_data=['material']
     )
     
@@ -102,21 +123,26 @@ def plot_parameter_correlation(experiments):
 def create_statistics_summary(stats):
     """統計摘要表"""
     summary_data = {
-        '指標': [
-            '總實驗數',
-            '平均波長 (nm)',
-            '波長範圍 (nm)',
-            '使用材料數',
-            '平均功率 (mW)'
+        'Metric': [
+            'Total Experiments',
+            'Average Wavelength (nm)',
+            'Wavelength Range (nm)',
+            'Material Types',
         ],
-        '數值': [
+        'Value': [
             stats.get('total_experiments', 0),
             f"{stats['wavelength']['avg']:.1f}" if stats.get('wavelength', {}).get('avg') else 'N/A',
             f"{stats['wavelength']['min']:.0f} - {stats['wavelength']['max']:.0f}" 
                 if stats.get('wavelength', {}).get('min') else 'N/A',
             len(stats.get('by_material', {})),
-            'N/A'  # 後續可加入
         ]
     }
     
     return pd.DataFrame(summary_data)
+
+# ============================================================
+# 驗證函數已加載
+# ============================================================
+
+if __name__ == "__main__":
+    print("✅ All visualization functions loaded successfully")

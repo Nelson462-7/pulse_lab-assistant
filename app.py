@@ -3,6 +3,8 @@ import requests
 import json
 from datetime import datetime
 import re
+import os
+from dotenv import load_dotenv
 from database import (
     init_database, save_experiment, get_all_experiments,
     query_by_material, query_by_date_range, get_experiment_stats,
@@ -10,23 +12,20 @@ from database import (
     delete_experiment, get_available_dates
 )
 
-from visualization import (
-    plot_wavelength_trend, plot_power_trend,
-    plot_material_distribution, plot_parameter_correlation,
-    create_statistics_summary
-)
+# ============================================================
+# 環境變數設置
+# ============================================================
+load_dotenv()
 
 st.set_page_config(page_title="Pulse Lab AI Assistant", layout="wide")
 
-# ============================================================
-# 初始化
-# ============================================================
+# 初始化數據庫
 init_database()
 
 st.title("🧪 Pulse Lab AI 實驗助手 Phase 2")
 st.write("智能參數提取 + 數據庫儲存與版本控制")
 
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
 MAX_INPUT_LENGTH = 500
 REQUIRED_KEYWORDS = ["nm", "mW", "mm/s", "波長", "功率", "速度"]
 
@@ -121,22 +120,26 @@ with st.sidebar:
     st.header("⚙️ 系統設定")
     page = st.radio(
         "選擇功能",
-        ["📝 新增實驗", "📊 查看與刪除", "📈 統計與導出"],
+        ["📝 新增實驗", "📊 查看與刪除", "📈 統計總覽"],
         help="在不同功能間切換"
     )
     
     st.divider()
     st.markdown("""
-    ### 📋 Phase 2 進度
-    - ✅ 刪除防呆驗證
-    - ✅ 智能時間戳導出
-    - ✅ 修改歷程查看
-    - ⏳ Week 2：數據可視化
-    
-    ### 🎯 系統狀態
+    ### 📋 系統狀態
+    - **當前版本**: Phase 2
     - **數據庫**: SQLite ✅
-    - **版本控制**: 刪除日誌 ✅
-    - **穩定性**: 70-80%
+    - **安全性**: 環境變數 ✅
+    
+    ### 🔐 資安優先級
+    1. ✅ 環境變數管理
+    2. ⏳ 日誌系統
+    3. ⏳ 自動備份
+    4. ⏳ 詳細可視化
+    
+    ### 💡 計劃
+    具體可視化將在確認
+    實驗數據格式後實施
     """)
 
 # ============================================================
@@ -354,7 +357,7 @@ elif page == "📊 查看與刪除":
                     f"📁 ID:{exp['id']} | {exp['timestamp'][:16]} | "
                     f"{exp.get('material', 'N/A')} | {exp.get('power_mW', 'N/A')}mW"
                 ):
-                    col1, col2 = st.columns(2)   
+                    col1, col2 = st.columns(2)
                     
                     with col1:
                         st.write(f"**波長**: {exp.get('wavelength_nm', 'N/A')} nm")
@@ -379,8 +382,8 @@ elif page == "📊 查看與刪除":
                                 f"修改了 `{h['field_name']}`: "
                                 f"從 `{h['old_value']}` → `{h['new_value']}`"
                             )
-                      
-                    # 刪除按鈕 DELETION_PASSWORD = "pulse2026"  # 刪除驗證碼
+                    
+                    # 刪除按鈕
                     st.markdown("---")
                     st.markdown("**⚠️ 危險區域：刪除此實驗**")
                     
@@ -419,102 +422,101 @@ elif page == "📊 查看與刪除":
         st.error(f"❌ 查詢失敗：{str(e)}")
 
 # ============================================================
-# Page 3：統計與導出
+# Page 3：統計總覽（簡化版）
 # ============================================================
 
-elif page == "📈 統計與導出":
-    st.subheader("實驗統計與數據分析")
+elif page == "📈 統計總覽":
+    st.subheader("實驗統計與數據導出")
     
     try:
         stats = get_experiment_stats()
-        experiments = get_all_experiments()
         
         if stats and stats.get('total_experiments', 0) > 0:
             
-            # 使用標籤頁組織內容
-            tab1, tab2, tab3, tab4 = st.tabs([
-                "📊 數據摘要",
-                "📈 趨勢分析",
-                "🎨 分布圖表",
-                "📥 數據導出"
-            ])
+            # --- 統計信息（簡化版）---
+            st.markdown("### 📊 數據總覽")
             
-            with tab1:
-                st.markdown("### 📊 統計摘要")
-                summary_df = create_statistics_summary(stats)
-                st.dataframe(summary_df, use_container_width=True)
-                
-                # 按材料統計
-                if stats.get('by_material'):
-                    st.markdown("### 🧪 按材料分佈")
-                    for material, count in sorted(stats['by_material'].items(), 
-                                                 key=lambda x: x[1], reverse=True):
-                        st.write(f"- **{material}**: {count} 次")
+            col1, col2, col3 = st.columns(3)
             
-            with tab2:
-                st.markdown("### 📈 參數趨勢")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    fig_wavelength = plot_wavelength_trend(experiments)
-                    if fig_wavelength:
-                        st.pyplot(fig_wavelength)
-                    else:
-                        st.info("波長數據不足（需至少 2 筆）")
-                
-                with col2:
-                    fig_power = plot_power_trend(experiments)
-                    if fig_power:
-                        st.pyplot(fig_power)
-                    else:
-                        st.info("功率數據不足（需至少 2 筆）")
+            with col1:
+                st.metric("📌 總實驗筆數", stats.get('total_experiments', 0))
             
-            with tab3:
-                st.markdown("### 🎨 分布與相關性")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    fig_material = plot_material_distribution(stats)
-                    if fig_material:
-                        st.plotly_chart(fig_material, use_container_width=True)
-                
-                with col2:
-                    fig_correlation = plot_parameter_correlation(experiments)
-                    if fig_correlation:
-                        st.plotly_chart(fig_correlation, use_container_width=True)
-                    else:
-                        st.info("參數數據不足（需至少 3 筆有波長和功率的記錄）")
+            with col2:
+                st.metric("🧪 涵蓋材料種類", len(stats.get('by_material', {})))
             
-            with tab4:
-                # 保留原有的導出功能
-                st.markdown("### 📥 智能導出 CSV")
+            with col3:
+                avg_wave = stats.get('wavelength', {}).get('avg')
+                if avg_wave:
+                    st.metric("📏 平均波長", f"{avg_wave:.0f} nm")
+            
+            st.divider()
+            
+            # --- 按材料分佈（簡單列表）---
+            if stats.get('by_material'):
+                st.markdown("### 🧪 按材料分佈")
+                materials_data = stats.get('by_material', {})
                 
-                dates = get_available_dates()
-                export_options = ["所有歷史記錄"] + dates
-                
-                col_exp1, col_exp2 = st.columns([3, 1])
-                
-                with col_exp1:
-                    export_choice = st.selectbox(
-                        "選擇要導出的數據範圍",
-                        export_options
-                    )
-                
-                with col_exp2:
-                    st.write("")
-                    st.write("")
-                    if st.button("🚀 執行導出", use_container_width=True):
-                        try:
-                            filter_val = None if export_choice == "所有歷史記錄" else export_choice
-                            success, filename = export_to_csv(date_filter=filter_val)
-                            
-                            if success:
-                                st.success(f"✅ 導出成功！\n檔名：`{filename}`")
-                            else:
-                                st.error(f"❌ 導出失敗：{filename}")
+                # 簡單的列表（避免 dataframe 序列化問題）
+                for material, count in sorted(materials_data.items(), key=lambda x: x[1], reverse=True):
+                    st.write(f"- **{material}**: {count} 次")
+            
+            st.divider()
+            
+            # --- 智能導出 ---
+            st.markdown("### 📥 智能導出 CSV (不覆蓋檔案)")
+            
+            dates = get_available_dates()
+            export_options = ["所有歷史記錄"] + dates
+            
+            col_exp1, col_exp2 = st.columns([3, 1])
+            
+            with col_exp1:
+                export_choice = st.selectbox(
+                    "選擇要導出的數據範圍",
+                    export_options,
+                    help="選擇後會自動生成帶時間戳的檔名"
+                )
+            
+            with col_exp2:
+                st.write("")
+                st.write("")
+                if st.button("🚀 執行導出", use_container_width=True):
+                    try:
+                        filter_val = None if export_choice == "所有歷史記錄" else export_choice
+                        success, filename = export_to_csv(date_filter=filter_val)
                         
-                        except Exception as e:
-                            st.error(f"❌ 導出過程中出錯：{str(e)}")
+                        if success:
+                            st.success(f"✅ 導出成功！\n檔名：`{filename}`")
+                            st.info(f"檔案已保存在專案目錄下")
+                        else:
+                            st.error(f"❌ 導出失敗：{filename}")
+                    
+                    except Exception as e:
+                        st.error(f"❌ 導出過程中出錯：{str(e)}")
+            
+            st.divider()
+            
+            # --- 未來計劃 ---
+            st.markdown("""
+            ### 📈 詳細可視化（待規劃）
+            
+            詳細的圖表和分析將在以下條件滿足後實施：
+            
+            1. ✅ 確認實驗數據的具體輸出格式
+            2. ✅ 與黃教授確認需要分析的具體指標
+            3. ✅ 了解機台的實際參數範圍和限制
+            
+            **當前優先級：**
+            - 🔐 資安性（環境變數、日誌、備份）
+            - 📝 數據記錄和版本控制
+            - 📊 具體可視化需求確認後實施
+            
+            建議詢問黃教授或學長姐：
+            - 你們最關心的指標是什麼？（熱影響區、切割深度、加工時間...）
+            - 雷射機通常使用哪些波長？（固定的還是可變的？）
+            - 有沒有現成的實驗數據格式標準？
+            """)
+        
         else:
             st.info("還沒有足夠的數據進行分析")
     
@@ -527,11 +529,13 @@ elif page == "📈 統計與導出":
 
 st.divider()
 st.markdown("""
-**🎯 Phase 2 完成清單**
-- ✅ 刪除防呆驗證碼
-- ✅ 智能時間戳導出
-- ✅ 修改歷程追蹤
-- ⏳ 數據可視化（Week 2）
+**🎯 當前重點**
+- ✅ Phase 2 Week 1 完成（刪除驗證、智能導出）
+- ⏳ 資安改進進行中（環境變數、日誌、備份）
+- ⏸️ 詳細可視化暫緩（等待具體需求確認）
 
-**下一步**：進入 Week 2，實現數據可視化、趨勢分析、統計圖表
+**下一步**
+1. 完成資安相關改進
+2. 與黃教授確認具體的分析需求
+3. 基於實際需求設計有意義的可視化
 """)
