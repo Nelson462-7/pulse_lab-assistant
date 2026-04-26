@@ -348,7 +348,7 @@ elif page == "📊 查看與刪除":
                     f"📁 ID:{exp['id']} | {exp['timestamp'][:16]} | "
                     f"{exp.get('material', 'N/A')} | {exp.get('power_mW', 'N/A')}mW"
                 ):
-                    col1, col2 = st.columns(2)
+                    col1, col2 = st.columns(2)   
                     
                     with col1:
                         st.write(f"**波長**: {exp.get('wavelength_nm', 'N/A')} nm")
@@ -373,7 +373,7 @@ elif page == "📊 查看與刪除":
                                 f"修改了 `{h['field_name']}`: "
                                 f"從 `{h['old_value']}` → `{h['new_value']}`"
                             )
-                    
+                      
                     # 刪除按鈕 DELETION_PASSWORD = "pulse2026"  # 刪除驗證碼
                     st.markdown("---")
                     st.markdown("**⚠️ 危險區域：刪除此實驗**")
