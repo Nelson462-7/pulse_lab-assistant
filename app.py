@@ -11,6 +11,9 @@ from database import (
     export_to_csv, get_edit_history,
     delete_experiment, get_available_dates
 )
+import pandas as pd
+import plotly.graph_objects as go
+from processor import process_hyperspectral_data  # 引入剛寫好的處理函數
 
 # ============================================================
 # 環境變數設置
@@ -120,7 +123,7 @@ with st.sidebar:
     st.header("⚙️ 系統設定")
     page = st.radio(
         "選擇功能",
-        ["📝 新增實驗", "📊 查看與刪除", "📈 統計總覽"],
+        ["📝 新增實驗", "📊 查看與刪除", "🔬 高光譜分析","📈 統計總覽"],
         help="在不同功能間切換"
     )
     
@@ -420,7 +423,131 @@ elif page == "📊 查看與刪除":
     
     except Exception as e:
         st.error(f"❌ 查詢失敗：{str(e)}")
+# ============================================================
+# Page：高光譜分析 (New!)
+# ============================================================
+elif page == "🔬 高光譜分析":
+    st.subheader("高光譜原始數據處理 (去噪 & 正規化)")
+    st.write("請上傳實驗室產出的原始數據 CSV 檔")
 
+    uploaded_file = st.file_uploader("選擇 CSV 檔案", type="csv")
+    
+    if uploaded_file is not None:
+        # --- 核心修復：只在這裡讀取一次檔案 ---
+        try:
+            uploaded_file.seek(0) # 確保檔案指標在最開頭
+            # 讀取數據並設定臨時欄位名
+            df_raw = pd.read_csv(uploaded_file, header=None)
+            df_raw.columns = [f"Col_{i}" for i in range(len(df_raw.columns))]
+            
+            st.write("📋 原始數據預覽：")
+            st.dataframe(df_raw.head(), use_container_width=True)
+            
+            st.divider()
+            
+            col_cfg1, col_cfg2 = st.columns(2)
+            with col_cfg1:
+                bg_num = st.number_input("背景訊號 (Background) 數量", min_value=1, max_value=10, value=3)
+            with col_cfg2:
+                st.info(f"系統將自動把最後 {bg_num} 欄視為背景訊號")
+
+            # 初始化 Session State 來儲存處理後的結果
+            if 'processed_df' not in st.session_state:
+                st.session_state.processed_df = None
+
+            # 按下處理按鈕
+            if st.button("🚀 開始處理數據", type="primary", use_container_width=True):
+                # 直接使用上面讀取好的 df_raw，不再重複 read_csv
+                df_processed, _, _ = process_hyperspectral_data(df_raw, bg_count=bg_num)
+                st.session_state.processed_df = df_processed
+                st.success("✅ 數據處理完成！")
+
+            # --- 繪圖區：只要有數據就顯示 ---
+            if st.session_state.processed_df is not None:
+                df_p = st.session_state.processed_df
+                
+                with st.expander("🎨 繪圖樣式設定", expanded=True):
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        chart_title = st.text_input("圖表標題", value="Normalised Hyperspectral Plot")
+                        x_label = st.text_input("X 軸標籤", value="Wavelength (nm)")
+                    with col_p2:
+                        y_label = st.text_input("Y 軸標籤", value="Normalized Intensity (a.u.)")
+                        chart_height = st.slider("圖表高度", 300, 800, 500)
+
+                # 使用 Plotly 繪圖
+                fig = go.Figure()
+                wavelengths = df_p.iloc[:, 0]
+                norm_cols = [c for c in df_p.columns if '_normalized' in str(c)]
+                
+                for col in norm_cols:
+                    fig.add_trace(go.Scatter(
+                        x=wavelengths, 
+                        y=df_p[col], 
+                        mode='lines', 
+                        name=col.replace('_normalized', '')
+                    ))
+
+                # 設定：白色背景、標題置中
+                # --- Plotly 繪圖設定 (強制黑色字體與軸線) ---
+                fig.update_layout(
+                    title={
+                        'text': chart_title,
+                        'y': 0.95, 
+                        'x': 0.5,
+                        'xanchor': 'center', 
+                        'yanchor': 'top',
+                        'font': {'color': 'black', 'size': 20} # 強制標題為黑色
+                    },
+                    xaxis_title=x_label,
+                    yaxis_title=y_label,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    height=chart_height,
+                    # 全域字體設定
+                    font=dict(
+                        color="black",  # 強制所有文字(包含 Legend)為黑色
+                        family="Arial"  # 設定一個常用的字體
+                    ),
+                    legend=dict(
+                        font=dict(color="black"),
+                        bgcolor="rgba(255,255,255,0.7)",
+                        bordercolor="black",
+                        borderwidth=1
+                    )
+                )
+
+                # 強制座標軸刻度文字與軸線顏色
+                fig.update_xaxes(
+                    showgrid=True, 
+                    gridcolor='LightGray', 
+                    zerolinecolor='black',
+                    tickfont=dict(color='black'), # X 軸刻度文字黑色
+                    title_font=dict(color='black'), # X 軸標題黑色
+                    linecolor='black' # X 軸底部線條
+                )
+                fig.update_yaxes(
+                    showgrid=True, 
+                    gridcolor='LightGray', 
+                    zerolinecolor='black',
+                    tickfont=dict(color='black'), # Y 軸刻度文字黑色
+                    title_font=dict(color='black'), # Y 軸標題黑色
+                    linecolor='black' # Y 軸側邊線條
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+                import io
+                buffer = io.StringIO()
+                fig.write_html(buffer, include_plotlyjs='cdn')
+                st.download_button(
+                    label="💾 下載互動式圖表 (HTML)",
+                    data=buffer.getvalue(),
+                    file_name=f"Hyperspectral_{datetime.now().strftime('%m%d_%H%M')}.html",
+                    mime="text/html"
+                )
+
+        except Exception as e:
+            st.error(f"❌ 檔案讀取出錯：{e}")
 # ============================================================
 # Page 3：統計總覽（簡化版）
 # ============================================================
