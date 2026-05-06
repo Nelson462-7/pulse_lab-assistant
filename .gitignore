@@ -1,11 +1,23 @@
+# --- 系統與開發環境 ---
+venv/
 .env
 .env.local
 secrets.toml
-venv/
 __pycache__/
 *.pyc
+
+# --- 資料庫與日誌 ---
 *.db
-backups/
-*.csv
 logs/
 error_log.txt
+backups/
+.DS_Store
+
+# --- 實驗數據與輸出 (Research Data) ---
+# 避免將大型原始數據或機密實驗結果上傳 GitHub
+exports/
+*.csv
+*.xlsx
+
+# --- 文件與筆記 ---
+git_cheat_sheet.md``

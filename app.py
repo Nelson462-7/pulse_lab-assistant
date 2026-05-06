@@ -14,6 +14,53 @@ from database import (
 import pandas as pd
 import plotly.graph_objects as go
 from processor import process_hyperspectral_data  # 引入剛寫好的處理函數
+# ================
+# 新增日誌功能
+# ================
+import logging
+import os
+import shutil
+from datetime import datetime
+from pathlib import Path
+
+# --- 目錄初始化 ---
+# 確保 logs 和 backups 資料夾存在
+os.makedirs("logs", exist_ok=True)
+os.makedirs("backups", exist_ok=True)
+
+# --- 日誌系統設置 ---
+LOG_FILE = f"logs/app_{datetime.now().strftime('%Y%m%d')}.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler() # 同時輸出到控制台
+    ]
+)
+
+logger = logging.getLogger("PulseLabApp")
+# ============================================================
+# 安全匯出功能
+# ============================================================
+def handle_safe_export(processor, filename, include_filtered):
+    """具備自動備份功能的匯出邏輯"""
+    output_path = Path(f"exports/{filename}")
+    os.makedirs("exports", exist_ok=True)
+    
+    # 如果檔案已存在，先搬移到 backups 存檔
+    if output_path.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"backups/{output_path.stem}_{timestamp}{output_path.suffix}"
+        shutil.copy(output_path, backup_name)
+        logger.info(f"💾 已建立備份：{backup_name}")
+    
+    # 執行匯出
+    success = processor.export_to_excel(str(output_path), include_filtered=include_filtered)
+    if success:
+        logger.info(f"✅ 成功匯出檔案：{output_path}")
+    return success
 
 # ============================================================
 # 環境變數設置
@@ -433,9 +480,8 @@ elif page == "🔬 高光譜分析":
     uploaded_file = st.file_uploader("選擇 CSV 檔案", type="csv")
     
     if uploaded_file is not None:
-        # --- 核心修復：只在這裡讀取一次檔案 ---
         try:
-            uploaded_file.seek(0) # 確保檔案指標在最開頭
+            uploaded_file.seek(0)  # 確保檔案指標在最開頭
             # 讀取數據並設定臨時欄位名
             df_raw = pd.read_csv(uploaded_file, header=None)
             df_raw.columns = [f"Col_{i}" for i in range(len(df_raw.columns))]
@@ -451,18 +497,24 @@ elif page == "🔬 高光譜分析":
             with col_cfg2:
                 st.info(f"系統將自動把最後 {bg_num} 欄視為背景訊號")
 
-            # 初始化 Session State 來儲存處理後的結果
+            # 初始化 Session State
             if 'processed_df' not in st.session_state:
                 st.session_state.processed_df = None
 
             # 按下處理按鈕
             if st.button("🚀 開始處理數據", type="primary", use_container_width=True):
-                # 直接使用上面讀取好的 df_raw，不再重複 read_csv
-                df_processed, _, _ = process_hyperspectral_data(df_raw, bg_count=bg_num)
+                # 呼叫處理函數
+                df_processed, m_cols, b_cols = process_hyperspectral_data(df_raw, bg_count=bg_num)
+                
+                # 【關鍵】統一欄位名稱，避免後端找不到
+                # 將第一欄(波長)正式命名為 Wavelength
+                df_processed = df_processed.rename(columns={df_processed.columns[0]: "Wavelength"})
+                
+                # 存入 Session State
                 st.session_state.processed_df = df_processed
                 st.success("✅ 數據處理完成！")
 
-            # --- 繪圖區：只要有數據就顯示 ---
+            # --- 繪圖區 ---
             if st.session_state.processed_df is not None:
                 df_p = st.session_state.processed_df
                 
@@ -475,7 +527,7 @@ elif page == "🔬 高光譜分析":
                         y_label = st.text_input("Y 軸標籤", value="Normalized Intensity (a.u.)")
                         chart_height = st.slider("圖表高度", 300, 800, 500)
 
-                # 使用 Plotly 繪圖
+                # Plotly 繪圖
                 fig = go.Figure()
                 wavelengths = df_p.iloc[:, 0]
                 norm_cols = [c for c in df_p.columns if '_normalized' in str(c)]
@@ -488,54 +540,19 @@ elif page == "🔬 高光譜分析":
                         name=col.replace('_normalized', '')
                     ))
 
-                # 設定：白色背景、標題置中
-                # --- Plotly 繪圖設定 (強制黑色字體與軸線) ---
                 fig.update_layout(
-                    title={
-                        'text': chart_title,
-                        'y': 0.95, 
-                        'x': 0.5,
-                        'xanchor': 'center', 
-                        'yanchor': 'top',
-                        'font': {'color': 'black', 'size': 20} # 強制標題為黑色
-                    },
-                    xaxis_title=x_label,
-                    yaxis_title=y_label,
-                    plot_bgcolor='white',
-                    paper_bgcolor='white',
-                    height=chart_height,
-                    # 全域字體設定
-                    font=dict(
-                        color="black",  # 強制所有文字(包含 Legend)為黑色
-                        family="Arial"  # 設定一個常用的字體
-                    ),
-                    legend=dict(
-                        font=dict(color="black"),
-                        bgcolor="rgba(255,255,255,0.7)",
-                        bordercolor="black",
-                        borderwidth=1
-                    )
+                    title={'text': chart_title, 'y': 0.95, 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top', 'font': {'color': 'black', 'size': 20}},
+                    xaxis_title=x_label, yaxis_title=y_label,
+                    plot_bgcolor='white', paper_bgcolor='white', height=chart_height,
+                    font=dict(color="black", family="Arial"),
+                    legend=dict(font=dict(color="black"), bgcolor="rgba(255,255,255,0.7)", bordercolor="black", borderwidth=1)
                 )
 
-                # 強制座標軸刻度文字與軸線顏色
-                fig.update_xaxes(
-                    showgrid=True, 
-                    gridcolor='LightGray', 
-                    zerolinecolor='black',
-                    tickfont=dict(color='black'), # X 軸刻度文字黑色
-                    title_font=dict(color='black'), # X 軸標題黑色
-                    linecolor='black' # X 軸底部線條
-                )
-                fig.update_yaxes(
-                    showgrid=True, 
-                    gridcolor='LightGray', 
-                    zerolinecolor='black',
-                    tickfont=dict(color='black'), # Y 軸刻度文字黑色
-                    title_font=dict(color='black'), # Y 軸標題黑色
-                    linecolor='black' # Y 軸側邊線條
-                )
+                fig.update_xaxes(showgrid=True, gridcolor='LightGray', zerolinecolor='black', tickfont=dict(color='black'), linecolor='black')
+                fig.update_yaxes(showgrid=True, gridcolor='LightGray', zerolinecolor='black', tickfont=dict(color='black'), linecolor='black')
 
                 st.plotly_chart(fig, use_container_width=True)
+                
                 import io
                 buffer = io.StringIO()
                 fig.write_html(buffer, include_plotlyjs='cdn')
@@ -546,8 +563,53 @@ elif page == "🔬 高光譜分析":
                     mime="text/html"
                 )
 
-        except Exception as e:
-            st.error(f"❌ 檔案讀取出錯：{e}")
+                # --- 數據匯出區 ---
+                st.divider()
+                st.markdown("### 📥 數據匯出")
+
+                col_ex1, col_ex2 = st.columns(2)
+                with col_ex1:
+                    apply_filter = st.checkbox("包含 Savitzky-Golay 濾波數據", value=True)
+                    default_filename = f"Hyperspectral_Export_{datetime.now().strftime('%m%d_%H%M')}.csv"
+                    file_name_input = st.text_input("設定匯出檔名", value=default_filename)
+
+                with col_ex2:
+                    st.write("")
+                    st.write("")
+                    if not file_name_input.endswith('.csv'):
+                        file_name_input += '.csv'
+
+                    if st.button("📄 匯出至 CSV (穩定推薦版)", type="primary", use_container_width=True):
+                        try:
+                            from processor import HyperspectralProcessor
+                            export_proc = HyperspectralProcessor()
+                            
+                            # 1. 載入數據
+                            export_proc.df = st.session_state.processed_df.copy()
+                            
+                            # 2. 核心修復：手動重建 normalized_cols 清單
+                            # 這是因為 export_to_csv 依賴這個清單來決定要抓哪些欄位
+                            current_cols = export_proc.df.columns.tolist()
+                            export_proc.normalized_cols = [c for c in current_cols if '_normalized' in str(c) and '_filtered' not in str(c)]
+                            
+                            # 3. 執行匯出
+                            os.makedirs("exports", exist_ok=True)
+                            output_csv_path = f"exports/{file_name_input}"
+                            
+                            if export_proc.export_to_csv(output_csv_path, include_filtered=apply_filter):
+                                st.success(f"✅ CSV 檔案已生成")
+                                with open(output_csv_path, "rb") as f:
+                                    st.download_button(
+                                        label="📥 點擊下載 CSV 檔案",
+                                        data=f,
+                                        file_name=file_name_input,
+                                        mime="text/csv"
+                                    )
+                        except Exception as e:
+                            st.error(f"❌ 匯出失敗：{str(e)}")
+
+        except Exception as file_err:
+            st.error(f"❌ 檔案讀取出錯：{str(file_err)}")
 # ============================================================
 # Page 3：統計總覽（簡化版）
 # ============================================================
