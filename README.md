@@ -46,4 +46,3 @@ This tool was developed as part of undergraduate research in AI-assisted laser p
 
 Author: KUO, YAO-JUNG (Nelson)
 Affiliation: National Tsing Hua University, IPE (PME & CS)
-Advisor: Prof. Po-Han Huang @ NTHU Pulse Lab
